@@ -42,16 +42,21 @@ async function ensureEssentialDatabase() {
   }
 }
 
-/** Si la collection admins est vide, crée l’admin par défaut (variables .env ou défauts). */
+/** Crée l’admin décrit par ADMIN_USERNAME / ADMIN_PASSWORD s’il n’existe pas encore. */
 async function seedDefaultAdminIfMissing(options = {}) {
   const { verbose = true } = options;
-  const count = await Admin.countDocuments();
-  if (count > 0) {
-    if (verbose) console.log(`ℹ️  Table/collection admins: ${count} compte(s).`);
+  const username = (process.env.ADMIN_USERNAME || 'admin').toLowerCase().trim();
+  const plainPassword = process.env.ADMIN_PASSWORD || 'Admin@Lean2024';
+
+  const existing = await Admin.findOne({ username });
+  if (existing) {
+    if (verbose) {
+      const total = await Admin.countDocuments();
+      console.log(`ℹ️  Admin « ${username} » déjà présent (${total} compte(s) au total).`);
+    }
     return;
   }
-  const username = (process.env.ADMIN_USERNAME || 'ziedhadrouk').toLowerCase().trim();
-  const plainPassword = process.env.ADMIN_PASSWORD || 'Admin@zied123';
+
   const hashed = await bcrypt.hash(plainPassword, 10);
   try {
     await Admin.create({ username, password: hashed });
@@ -59,9 +64,8 @@ async function seedDefaultAdminIfMissing(options = {}) {
     if (err.code === 11000) return;
     throw err;
   }
-  console.log('✅ Aucun admin en base — seed: compte créé dans `admins`.');
+  console.log('✅ Compte admin créé (variables .env) — collection `admins`.');
   console.log('   Username:', username);
-  console.log('   Password:', plainPassword);
 }
 
 // ──────────────── AUTH MIDDLEWARE ────────────────
