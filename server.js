@@ -24,31 +24,44 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 mongoose.connect(MONGODB_URI)
   .then(async () => {
     console.log('✅ MongoDB connecté —', MONGODB_URI.split('@')[1]);
-    await seedAdmin();
+    await ensureEssentialDatabase();
   })
   .catch(err => {
     console.error('❌ Erreur MongoDB:', err.message);
     process.exit(1);
   });
 
-// ──────────────── SEED ADMIN ────────────────
-async function seedAdmin() {
+// ──────────────── SCHÉMAS / SEED (collections admins + diagnostic_responses) ────────────────
+async function ensureEssentialDatabase() {
   try {
-    const existing = await Admin.findOne({ username: process.env.ADMIN_USERNAME || 'admin' });
-    if (!existing) {
-      const hashed = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'Admin@Lean2024', 10);
-      await Admin.create({
-        username: process.env.ADMIN_USERNAME || 'admin',
-        password: hashed
-      });
-      console.log('✅ Compte admin créé — username:', process.env.ADMIN_USERNAME || 'admin');
-      console.log('   Mot de passe:', process.env.ADMIN_PASSWORD || 'Admin@Lean2024');
-    } else {
-      console.log('ℹ️  Compte admin existant:', existing.username);
-    }
+    await Admin.syncIndexes();
+    await DiagnosticResponse.syncIndexes();
+    await seedDefaultAdminIfMissing();
   } catch (err) {
-    console.error('Erreur seed admin:', err.message);
+    console.error('Erreur initialisation base:', err.message);
   }
+}
+
+/** Si la collection admins est vide, crée l’admin par défaut (variables .env ou défauts). */
+async function seedDefaultAdminIfMissing(options = {}) {
+  const { verbose = true } = options;
+  const count = await Admin.countDocuments();
+  if (count > 0) {
+    if (verbose) console.log(`ℹ️  Table/collection admins: ${count} compte(s).`);
+    return;
+  }
+  const username = (process.env.ADMIN_USERNAME || 'admin').toLowerCase().trim();
+  const plainPassword = process.env.ADMIN_PASSWORD || 'Admin@Lean2024';
+  const hashed = await bcrypt.hash(plainPassword, 10);
+  try {
+    await Admin.create({ username, password: hashed });
+  } catch (err) {
+    if (err.code === 11000) return;
+    throw err;
+  }
+  console.log('✅ Aucun admin en base — seed: compte créé dans `admins`.');
+  console.log('   Username:', username);
+  console.log('   Password:', plainPassword);
 }
 
 // ──────────────── AUTH MIDDLEWARE ────────────────
@@ -93,8 +106,12 @@ app.post('/api/submit', async (req, res) => {
 
 // ──────────────── ROUTES ADMIN ────────────────
 
-// Login redirect
+// Entrée secrète → redirection HTTP vers l’interface de login
 app.get('/zied', (req, res) => {
+  res.redirect(302, '/login');
+});
+
+app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/login.html'));
 });
 
@@ -110,6 +127,8 @@ app.post('/api/admin/login', async (req, res) => {
     return res.status(400).json({ message: 'Identifiant et mot de passe requis.' });
   }
   try {
+    await seedDefaultAdminIfMissing({ verbose: false });
+
     const admin = await Admin.findOne({ username: username.toLowerCase().trim() });
     if (!admin) {
       return res.status(401).json({ message: 'Identifiants incorrects.' });
@@ -221,7 +240,7 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`\n🚀 Serveur démarré sur http://localhost:${PORT}`);
   console.log(`📋 Formulaire public    → http://localhost:${PORT}/`);
-  console.log(`🔐 Interface admin      → http://localhost:${PORT}/zied`);
+  console.log(`🔐 Interface admin      → http://localhost:${PORT}/zied → /login`);
   console.log(`📊 Dashboard admin      → http://localhost:${PORT}/zied/dashboard`);
   console.log(`\n🔑 Identifiants admin par défaut:`);
   console.log(`   Username: ${process.env.ADMIN_USERNAME || 'admin'}`);
