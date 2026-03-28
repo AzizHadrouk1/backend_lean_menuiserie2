@@ -50,8 +50,8 @@ async function seedDefaultAdminIfMissing(options = {}) {
     if (verbose) console.log(`ℹ️  Table/collection admins: ${count} compte(s).`);
     return;
   }
-  const username = (process.env.ADMIN_USERNAME || 'admin').toLowerCase().trim();
-  const plainPassword = process.env.ADMIN_PASSWORD || 'Admin@Lean2024';
+  const username = (process.env.ADMIN_USERNAME || 'ziedhadrouk').toLowerCase().trim();
+  const plainPassword = process.env.ADMIN_PASSWORD || 'Admin@zied123';
   const hashed = await bcrypt.hash(plainPassword, 10);
   try {
     await Admin.create({ username, password: hashed });
